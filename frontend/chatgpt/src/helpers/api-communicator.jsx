@@ -3,7 +3,7 @@ import axios from "axios";
 
 export const loginUser = async (email, password) => {
   try {
-    const res = await axios.post("/api/v1/user/login", { email, password });
+    const res = await axios.post("/user/login", { email, password });
     if (res.status !== 200) {
       throw new Error("Unable to login");
     }

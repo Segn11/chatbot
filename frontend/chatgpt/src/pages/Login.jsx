@@ -7,7 +7,7 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const auth = useAuth();
+  const {login} = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -15,7 +15,7 @@ const LoginPage = () => {
   
     try {
       toast.loading("Signing In", { id: "login" })
-      await auth.login(email,password)
+      await login(email,password)
       toast.success("Signed In Successfully", { id: "login" })
     } catch (error) {
       // console.log(error)
