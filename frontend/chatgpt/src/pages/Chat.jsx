@@ -5,6 +5,7 @@ import {
   sendChatRequest,
   getConversations,
   getConversation,
+  createConversation,
   renameConversation,
   deleteConversation,
   getUserChats,
@@ -71,7 +72,7 @@ const Chat = () => {
     scrollToBottom();
   }, [chatMessages, loading]);
 
-  // Load user conversations on mount
+  // Load user conversations on initial mount
   const loadConversations = async (autoSelectFirst = true) => {
     try {
       const data = await getConversations();
@@ -84,8 +85,21 @@ const Chat = () => {
         const convData = await getConversation(latest._id);
         setChatMessages(convData?.chats || []);
       } else if (list.length === 0) {
-        setActiveConversationId(null);
-        setChatMessages([]);
+        // Automatically create an initial fresh conversation session if none exist
+        const newRes = await createConversation("New Chat");
+        if (newRes?.conversation) {
+          const freshConv = {
+            _id: newRes.conversation._id,
+            title: "New Chat",
+            createdAt: newRes.conversation.createdAt,
+            updatedAt: newRes.conversation.updatedAt,
+            messageCount: 0,
+            lastMessage: "",
+          };
+          setConversations([freshConv]);
+          setActiveConversationId(freshConv._id);
+          setChatMessages([]);
+        }
       }
     } catch (err) {
       console.error("Failed to load conversations:", err);
@@ -114,7 +128,7 @@ const Chat = () => {
     }
   }, [isLoggedIn, authLoading, navigate]);
 
-  // Auto-adjust textarea height
+  // Auto-adjust textarea height dynamically
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -125,7 +139,7 @@ const Chat = () => {
     }
   }, [input]);
 
-  // Select an existing conversation from the sidebar
+  // Select an existing conversation from the sidebar (loads previous messages)
   const handleSelectConversation = async (convId) => {
     if (convId === activeConversationId || loading) return;
 
@@ -140,26 +154,71 @@ const Chat = () => {
       setLoading(false);
     }
 
-    // On mobile, close sidebar drawer
+    // On mobile screens, close sidebar drawer after selecting
     if (window.innerWidth < 640) {
       setIsSidebarOpen(false);
     }
   };
 
-  // Start a fresh conversation
-  const handleNewChat = () => {
-    setActiveConversationId(null);
-    setChatMessages([]);
-    setInput("");
-    if (textareaRef.current) {
-      textareaRef.current.focus();
+  /**
+   * FIX: New Chat Functionality
+   * Creates a fresh, empty conversation with a new conversation ID in MongoDB
+   * Displays a clean chat interface without deleting or modifying previous conversations.
+   * Keeps all previous conversations intact and accessible from the sidebar.
+   */
+  const handleNewChat = async () => {
+    // If the currently active conversation is ALREADY an empty new conversation, keep it
+    const activeConv = conversations.find((c) => c._id === activeConversationId);
+    if (
+      activeConv &&
+      chatMessages.length === 0 &&
+      (!activeConv.messageCount || activeConv.messageCount === 0)
+    ) {
+      setInput("");
+      if (textareaRef.current) textareaRef.current.focus();
+      if (window.innerWidth < 640) setIsSidebarOpen(false);
+      return;
     }
+
+    try {
+      setLoading(true);
+      // Create a brand new conversation document in MongoDB with a unique conversation ID
+      const data = await createConversation("New Chat");
+      if (data?.conversation) {
+        const freshConv = {
+          _id: data.conversation._id,
+          title: data.conversation.title || "New Chat",
+          createdAt: data.conversation.createdAt,
+          updatedAt: data.conversation.updatedAt,
+          messageCount: 0,
+          lastMessage: "",
+        };
+
+        // Prepend new conversation to sidebar list without modifying or deleting any previous conversations
+        setConversations((prev) => [
+          freshConv,
+          ...prev.filter((c) => c._id !== freshConv._id),
+        ]);
+        setActiveConversationId(freshConv._id);
+        setChatMessages([]);
+        setInput("");
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to create new conversation:", err);
+      toast.error("Failed to start new chat");
+    } finally {
+      setLoading(false);
+    }
+
     if (window.innerWidth < 640) {
       setIsSidebarOpen(false);
     }
   };
 
-  // Send a message (continue active conversation or start a new one)
+  // Send a message within the active conversation
   const handleSendMessage = async (customMessage) => {
     const messageContent = (customMessage || input).trim();
     if (!messageContent || loading) return;
@@ -174,23 +233,59 @@ const Chat = () => {
     setLoading(true);
 
     try {
-      const isNewChat = !activeConversationId;
-      const data = await sendChatRequest(messageContent, activeConversationId);
+      let targetConvId = activeConversationId;
+
+      // If no active conversation exists, create a fresh empty conversation in MongoDB first
+      if (!targetConvId) {
+        const createRes = await createConversation("New Chat");
+        if (createRes?.conversation?._id) {
+          targetConvId = createRes.conversation._id;
+          setActiveConversationId(targetConvId);
+        }
+      }
+
+      // Send prompt linked to this specific conversation ID
+      const data = await sendChatRequest(messageContent, targetConvId);
 
       if (data?.chats) {
         setChatMessages(data.chats);
       }
 
-      // If this was a new conversation, set the newly generated ID
-      if (isNewChat && data?.conversationId) {
+      if (data?.conversationId) {
         setActiveConversationId(data.conversationId);
       }
 
-      // Refresh conversations list in background to update titles and ordering
-      const convListRes = await getConversations();
-      if (convListRes?.conversations) {
-        setConversations(convListRes.conversations);
-      }
+      // Update sidebar conversation item with new title and latest activity
+      const updatedTitle =
+        data?.conversation?.title ||
+        (messageContent.length > 32
+          ? messageContent.slice(0, 32).trim() + "..."
+          : messageContent.trim());
+
+      setConversations((prev) => {
+        const index = prev.findIndex((c) => c._id === targetConvId);
+        if (index !== -1) {
+          const updatedItem = {
+            ...prev[index],
+            title: updatedTitle,
+            updatedAt: new Date().toISOString(),
+            messageCount: data?.chats?.length || prev[index].messageCount + 2,
+            lastMessage: messageContent.slice(0, 60),
+          };
+          // Move this updated conversation to the top
+          return [updatedItem, ...prev.filter((c) => c._id !== targetConvId)];
+        } else {
+          const freshItem = {
+            _id: targetConvId,
+            title: updatedTitle,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messageCount: data?.chats?.length || 2,
+            lastMessage: messageContent.slice(0, 60),
+          };
+          return [freshItem, ...prev];
+        }
+      });
     } catch (error) {
       toast.error(error.message || "Failed to send message");
     } finally {
@@ -240,7 +335,7 @@ const Chat = () => {
     setEditingTitle("");
   };
 
-  // Delete a specific conversation
+  // Explicit user deletion of a specific conversation
   const handleDeleteConversation = async (convId, e) => {
     e.stopPropagation();
     if (!window.confirm("Are you sure you want to delete this conversation?")) return;
@@ -248,12 +343,38 @@ const Chat = () => {
     try {
       toast.loading("Deleting conversation...", { id: "delete-conv" });
       await deleteConversation(convId);
-      setConversations((prev) => prev.filter((c) => c._id !== convId));
 
-      // If the currently active conversation was deleted, reset to New Chat
+      const remaining = conversations.filter((c) => c._id !== convId);
+      setConversations(remaining);
+
+      // If the currently active conversation was deleted:
       if (activeConversationId === convId) {
-        setActiveConversationId(null);
-        setChatMessages([]);
+        if (remaining.length > 0) {
+          // Switch to the first remaining conversation
+          const nextConv = remaining[0];
+          setActiveConversationId(nextConv._id);
+          const data = await getConversation(nextConv._id);
+          setChatMessages(data?.chats || []);
+        } else {
+          // No conversations left, create a fresh empty conversation
+          const newRes = await createConversation("New Chat");
+          if (newRes?.conversation) {
+            const freshConv = {
+              _id: newRes.conversation._id,
+              title: "New Chat",
+              createdAt: newRes.conversation.createdAt,
+              updatedAt: newRes.conversation.updatedAt,
+              messageCount: 0,
+              lastMessage: "",
+            };
+            setConversations([freshConv]);
+            setActiveConversationId(freshConv._id);
+            setChatMessages([]);
+          } else {
+            setActiveConversationId(null);
+            setChatMessages([]);
+          }
+        }
       }
 
       toast.success("Conversation deleted", { id: "delete-conv" });
@@ -262,7 +383,7 @@ const Chat = () => {
     }
   };
 
-  // Clear all conversations
+  // Explicit user deletion of all conversations
   const handleClearAllHistory = async () => {
     if (conversations.length === 0 && chatMessages.length === 0) return;
     if (!window.confirm("Clear all conversations and chat history? This cannot be undone.")) return;
@@ -271,8 +392,25 @@ const Chat = () => {
       toast.loading("Clearing all history...", { id: "clear-all" });
       await deleteUserChats();
       setConversations([]);
-      setActiveConversationId(null);
       setChatMessages([]);
+
+      // Start fresh empty conversation
+      const newRes = await createConversation("New Chat");
+      if (newRes?.conversation) {
+        const freshConv = {
+          _id: newRes.conversation._id,
+          title: "New Chat",
+          createdAt: newRes.conversation.createdAt,
+          updatedAt: newRes.conversation.updatedAt,
+          messageCount: 0,
+          lastMessage: "",
+        };
+        setConversations([freshConv]);
+        setActiveConversationId(freshConv._id);
+      } else {
+        setActiveConversationId(null);
+      }
+
       toast.success("All chat history cleared", { id: "clear-all" });
     } catch (error) {
       toast.error("Failed to clear chat history", { id: "clear-all" });
@@ -299,8 +437,9 @@ const Chat = () => {
     );
   }
 
+  const activeConv = conversations.find((c) => c._id === activeConversationId);
   const currentTitle =
-    conversations.find((c) => c._id === activeConversationId)?.title ||
+    activeConv?.title ||
     (chatMessages.length > 0 ? "Conversation" : "New Chat");
 
   return (
@@ -333,7 +472,7 @@ const Chat = () => {
           </button>
         </div>
 
-        {/* Conversation History List */}
+        {/* Conversation History List (Preserved & Accessible in Sidebar) */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1 min-w-[288px] custom-scrollbar">
           <div className="flex items-center justify-between px-3 py-1.5 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
             <span>Conversations</span>
@@ -413,7 +552,7 @@ const Chat = () => {
                     </span>
                   </div>
 
-                  {/* Actions: Rename & Delete (visible on hover / active) */}
+                  {/* Actions: Rename & Delete (only deletes upon explicit user action) */}
                   <div
                     className={`flex items-center gap-1 shrink-0 ${
                       isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
@@ -572,7 +711,7 @@ const Chat = () => {
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
           {chatMessages.length === 0 ? (
-            /* Empty State / Welcome Hero */
+            /* Clean Empty Chat Interface / Welcome Hero */
             <div className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto py-12">
               <img src={botLogo} alt="Chatbot" className="w-16 h-16 object-contain mb-4 drop-shadow-md" />
 

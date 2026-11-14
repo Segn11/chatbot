@@ -126,6 +126,52 @@
     record("TC-HIST-05", "Create distinct Conversation 2", false, err.message);
   }
 
+  // 5B. "New Chat" Action: Create fresh, empty conversation with new ID without modifying/deleting previous conversations
+  let conv3Id = null;
+  try {
+    const res = await fetch(`${base}/chat/conversations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenUserA}`,
+        "x-test-bypass-ratelimit": "true",
+      },
+      body: JSON.stringify({ title: "New Chat" }),
+    });
+    const data = await res.json();
+    conv3Id = data.conversation?._id;
+
+    // Verify Previous Conversation 1 is completely unmodified
+    const checkConv1 = await fetch(`${base}/chat/conversation/${conv1Id}`, {
+      headers: { Authorization: `Bearer ${tokenUserA}`, "x-test-bypass-ratelimit": "true" },
+    });
+    const dataConv1 = await checkConv1.json();
+
+    // Verify Previous Conversation 2 is completely unmodified
+    const checkConv2 = await fetch(`${base}/chat/conversation/${conv2Id}`, {
+      headers: { Authorization: `Bearer ${tokenUserA}`, "x-test-bypass-ratelimit": "true" },
+    });
+    const dataConv2 = await checkConv2.json();
+
+    const isNewChatClean =
+      res.status === 201 &&
+      !!conv3Id &&
+      conv3Id !== conv1Id &&
+      conv3Id !== conv2Id &&
+      data.conversation?.messages?.length === 0 &&
+      dataConv1.chats?.length === 4 &&
+      dataConv2.chats?.length === 2;
+
+    record(
+      "TC-HIST-05B",
+      "New Chat creates fresh empty conversation with new ID; preserves previous conversations untouched",
+      isNewChatClean,
+      `Conv 3 ID: ${conv3Id}, Conv 1 msgs: ${dataConv1.chats?.length}, Conv 2 msgs: ${dataConv2.chats?.length}`
+    );
+  } catch (err) {
+    record("TC-HIST-05B", "New Chat empty conversation creation", false, err.message);
+  }
+
   // 6. List conversations in sidebar format (sorted by updatedAt)
   try {
     const res = await fetch(`${base}/chat/conversations`, {
@@ -133,9 +179,10 @@
     });
     const data = await res.json();
     const isSorted =
-      data.conversations?.length === 2 &&
-      data.conversations[0]._id === conv2Id &&
-      data.conversations[1]._id === conv1Id;
+      data.conversations?.length === 3 &&
+      data.conversations[0]._id === conv3Id &&
+      data.conversations[1]._id === conv2Id &&
+      data.conversations[2]._id === conv1Id;
 
     record(
       "TC-HIST-06",
@@ -270,7 +317,11 @@
       headers: { Authorization: `Bearer ${tokenUserA}`, "x-test-bypass-ratelimit": "true" },
     });
     const listData = await verifyList.json();
-    const remainingMatches = listData.conversations?.length === 1 && listData.conversations[0]._id === conv1Id;
+    const remainingMatches =
+      listData.conversations?.length === 2 &&
+      listData.conversations.some((c) => c._id === conv1Id) &&
+      listData.conversations.some((c) => c._id === conv3Id) &&
+      !listData.conversations.some((c) => c._id === conv2Id);
 
     record(
       "TC-HIST-10",
@@ -314,3 +365,4 @@
 
   process.exit(failed > 0 ? 1 : 0);
 })();
+
