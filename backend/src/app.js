@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import appRouter from "./routes/index.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { globalLimiter } from "./libs/rate-limiter.js";
 
 dotenv.config();
 const app = express();
@@ -28,12 +29,14 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-access-token"],
+  exposedHeaders: ["Set-Cookie", "Authorization"],
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" })); // Prevent oversized JSON payload attacks
 app.use(cookieParser(process.env.COOKIE_SECRET || "default_cookie_secret_key_123456789"));
+app.use(globalLimiter);
 
 // Health check endpoint for Docker / Kubernetes
 app.get("/health", (req, res) => {

@@ -6,10 +6,11 @@ import {
   sendChatsToUser,
   deleteChats,
 } from "../handlers/chat-controllers.js";
+import { chatLimiter } from "../libs/rate-limiter.js";
 
 const chatRoutes = Router();
 
-chatRoutes.post("/new", validate(chatCompletionValidator), verifyToken, generateChatCompletion);
+chatRoutes.post("/new", chatLimiter, validate(chatCompletionValidator), verifyToken, generateChatCompletion);
 chatRoutes.get("/all-chats", verifyToken, sendChatsToUser);
 chatRoutes.delete("/delete", verifyToken, deleteChats);
 

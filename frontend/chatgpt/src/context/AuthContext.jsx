@@ -25,9 +25,16 @@ export const AuthProvider = ({ children }) => {
         if (data && data.name) {
           setUser({ email: data.email, name: data.name });
           setIsLoggedIn(true);
+        } else {
+          localStorage.removeItem("chatbot_token");
+          setUser(null);
+          setIsLoggedIn(false);
         }
       } catch (error) {
         console.log("Auth status check:", error?.message || error);
+        localStorage.removeItem("chatbot_token");
+        setUser(null);
+        setIsLoggedIn(false);
       } finally {
         setLoading(false);
       }
@@ -38,6 +45,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const data = await loginUser(email, password);
     if (data && data.name) {
+      if (data.token) {
+        localStorage.setItem("chatbot_token", data.token);
+      }
       setUser({ email: data.email, name: data.name });
       setIsLoggedIn(true);
       return data;
@@ -48,6 +58,9 @@ export const AuthProvider = ({ children }) => {
   const signup = async (name, email, password) => {
     const data = await signupUser(name, email, password);
     if (data && data.name) {
+      if (data.token) {
+        localStorage.setItem("chatbot_token", data.token);
+      }
       setUser({ email: data.email, name: data.name });
       setIsLoggedIn(true);
       return data;
@@ -60,10 +73,12 @@ export const AuthProvider = ({ children }) => {
       await logoutUser();
     } catch (err) {
       console.error("Logout error:", err);
+    } finally {
+      localStorage.removeItem("chatbot_token");
+      setIsLoggedIn(false);
+      setUser(null);
+      window.location.href = "/login";
     }
-    setIsLoggedIn(false);
-    setUser(null);
-    window.location.href = "/login";
   };
 
   const value = {

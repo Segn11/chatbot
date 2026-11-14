@@ -37,12 +37,15 @@ export const userSignup = async (req, res) => {
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
 
+    // Set HTTP-only cookie
     res.cookie(COOKIE_NAME, token, getCookieOptions(expires));
 
+    // Return profile AND token for multi-channel auth (Cookies + Bearer headers)
     return res.status(201).json({
       message: "OK",
       name: user.name,
       email: user.email,
+      token,
     });
   } catch (error) {
     console.error("Error in userSignup:", error);
@@ -67,12 +70,15 @@ export const userLogin = async (req, res) => {
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
 
+    // Set HTTP-only cookie
     res.cookie(COOKIE_NAME, token, getCookieOptions(expires));
 
+    // Return profile AND token for multi-channel auth (Cookies + Bearer headers)
     return res.status(200).json({
       message: "OK",
       name: user.name,
       email: user.email,
+      token,
     });
   } catch (error) {
     console.error("Error in userLogin:", error);
@@ -102,20 +108,9 @@ export const verifyUser = async (req, res) => {
 
 export const userLogout = async (req, res) => {
   try {
-    const user = await User.findById(res.locals.jwtData?.id);
-    if (!user) {
-      return res.status(401).json({ message: "User not registered or token invalid" });
-    }
-    if (user._id.toString() !== res.locals.jwtData?.id) {
-      return res.status(401).json({ message: "Permissions do not match" });
-    }
-
     res.clearCookie(COOKIE_NAME, getCookieOptions());
-
     return res.status(200).json({
       message: "OK",
-      name: user.name,
-      email: user.email,
     });
   } catch (error) {
     console.error("Error in userLogout:", error);

@@ -297,7 +297,7 @@ const Chat = () => {
             </div>
           </div>
 
-          {/* Right Action Icons: Home link & Theme Toggle */}
+          {/* Right Action Icons: Home link, Theme Toggle & Logout */}
           <div className="flex items-center gap-2">
             <Link
               to="/"
@@ -317,6 +317,15 @@ const Chat = () => {
               ) : (
                 <IoMoonOutline className="w-4 h-4 text-zinc-700" />
               )}
+            </button>
+
+            <button
+              onClick={logout}
+              className="p-2 text-zinc-500 hover:text-red-500 dark:text-zinc-400 dark:hover:text-red-400 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition border border-zinc-200/60 dark:border-zinc-700/60"
+              title="Logout"
+              aria-label="Logout"
+            >
+              <RiLogoutBoxRLine className="w-4 h-4" />
             </button>
           </div>
         </header>
