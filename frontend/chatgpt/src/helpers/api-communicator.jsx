@@ -37,9 +37,86 @@ export const checkAuthStatus = async () => {
   }
 };
 
-export const sendChatRequest = async (message) => {
+// =========================================================================
+// CONVERSATIONS API
+// =========================================================================
+
+export const getConversations = async () => {
   try {
-    const res = await axios.post("/chat/new", { message });
+    const res = await axios.get("/chat/conversations");
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to fetch conversations";
+    throw new Error(message);
+  }
+};
+
+export const getConversation = async (id) => {
+  try {
+    const res = await axios.get(`/chat/conversation/${id}`);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to load conversation";
+    throw new Error(message);
+  }
+};
+
+export const createConversation = async (title = "New Chat") => {
+  try {
+    const res = await axios.post("/chat/conversations", { title });
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to create conversation";
+    throw new Error(message);
+  }
+};
+
+export const renameConversation = async (id, title) => {
+  try {
+    const res = await axios.put(`/chat/conversation/${id}`, { title });
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to rename conversation";
+    throw new Error(message);
+  }
+};
+
+export const deleteConversation = async (id) => {
+  try {
+    const res = await axios.delete(`/chat/conversation/${id}`);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to delete conversation";
+    throw new Error(message);
+  }
+};
+
+// =========================================================================
+// CHAT MESSAGES API
+// =========================================================================
+
+export const sendChatRequest = async (message, conversationId = null) => {
+  try {
+    const payload = { message };
+    if (conversationId) {
+      payload.conversationId = conversationId;
+    }
+    const res = await axios.post("/chat/new", payload);
     return res.data;
   } catch (error) {
     const message =
@@ -51,9 +128,12 @@ export const sendChatRequest = async (message) => {
   }
 };
 
-export const getUserChats = async () => {
+export const getUserChats = async (conversationId = null) => {
   try {
-    const res = await axios.get("/chat/all-chats");
+    const url = conversationId
+      ? `/chat/all-chats?conversationId=${encodeURIComponent(conversationId)}`
+      : "/chat/all-chats";
+    const res = await axios.get(url);
     return res.data;
   } catch (error) {
     const message =
@@ -64,9 +144,12 @@ export const getUserChats = async () => {
   }
 };
 
-export const deleteUserChats = async () => {
+export const deleteUserChats = async (conversationId = null) => {
   try {
-    const res = await axios.delete("/chat/delete");
+    const url = conversationId
+      ? `/chat/delete?conversationId=${encodeURIComponent(conversationId)}`
+      : "/chat/delete";
+    const res = await axios.delete(url);
     return res.data;
   } catch (error) {
     const message =

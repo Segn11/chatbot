@@ -618,7 +618,7 @@ import path from "path";
 
     // TC-UI-08: User Logout
     await page.goto("http://127.0.0.1:5173/chat", { waitUntil: "networkidle2" });
-    const logoutBtn = await page.$("button[title='Logout']");
+    const logoutBtn = await page.waitForSelector("button[title='Logout']", { timeout: 8000 }).catch(() => null);
     if (logoutBtn) {
       await logoutBtn.click();
       await new Promise((r) => setTimeout(r, 1000));

@@ -54,3 +54,14 @@ export const chatCompletionValidator = [
     .isLength({ max: 10000 })
     .withMessage("Message cannot exceed 10,000 characters"),
 ];
+
+export const conversationTitleValidator = [
+  body("title")
+    .isString()
+    .withMessage("Title must be a valid string")
+    .trim()
+    .notEmpty()
+    .withMessage("Title cannot be empty")
+    .isLength({ min: 1, max: 120 })
+    .withMessage("Title must be between 1 and 120 characters"),
+];

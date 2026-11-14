@@ -3,6 +3,10 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
   sendChatRequest,
+  getConversations,
+  getConversation,
+  renameConversation,
+  deleteConversation,
   getUserChats,
   deleteUserChats,
 } from "../helpers/api-communicator";
@@ -24,15 +28,25 @@ import {
   RiAddLine,
   RiDeleteBinLine,
   RiLogoutBoxRLine,
+  RiMessage3Line,
+  RiEdit2Line,
+  RiCheckLine,
+  RiCloseLine,
 } from "react-icons/ri";
 
 const Chat = () => {
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [copiedIndex, setCopiedIndex] = useState(null);
+
+  // Inline rename state
+  const [editingConvId, setEditingConvId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   const { user, isLoggedIn, loading: authLoading, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -48,7 +62,7 @@ const Chat = () => {
     { title: "Brainstorm ideas", desc: "Give me 5 unique side project ideas" },
   ];
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom of conversation
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -57,7 +71,38 @@ const Chat = () => {
     scrollToBottom();
   }, [chatMessages, loading]);
 
-  // Auth protection & chat retrieval
+  // Load user conversations on mount
+  const loadConversations = async (autoSelectFirst = true) => {
+    try {
+      const data = await getConversations();
+      const list = data?.conversations || [];
+      setConversations(list);
+
+      if (autoSelectFirst && list.length > 0) {
+        const latest = list[0];
+        setActiveConversationId(latest._id);
+        const convData = await getConversation(latest._id);
+        setChatMessages(convData?.chats || []);
+      } else if (list.length === 0) {
+        setActiveConversationId(null);
+        setChatMessages([]);
+      }
+    } catch (err) {
+      console.error("Failed to load conversations:", err);
+      // Fallback: try legacy getUserChats
+      try {
+        const fallback = await getUserChats();
+        if (fallback?.chats?.length > 0) {
+          setChatMessages(fallback.chats);
+        }
+      } catch (e) {
+        console.error("Fallback chat retrieval failed:", e);
+      }
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!authLoading && !isLoggedIn) {
       navigate("/login");
@@ -65,18 +110,7 @@ const Chat = () => {
     }
 
     if (isLoggedIn) {
-      getUserChats()
-        .then((data) => {
-          if (data?.chats) {
-            setChatMessages(data.chats);
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to load chats:", err);
-        })
-        .finally(() => {
-          setInitialLoading(false);
-        });
+      loadConversations(true);
     }
   }, [isLoggedIn, authLoading, navigate]);
 
@@ -91,6 +125,41 @@ const Chat = () => {
     }
   }, [input]);
 
+  // Select an existing conversation from the sidebar
+  const handleSelectConversation = async (convId) => {
+    if (convId === activeConversationId || loading) return;
+
+    setActiveConversationId(convId);
+    setLoading(true);
+    try {
+      const data = await getConversation(convId);
+      setChatMessages(data?.chats || []);
+    } catch (error) {
+      toast.error(error.message || "Failed to load conversation");
+    } finally {
+      setLoading(false);
+    }
+
+    // On mobile, close sidebar drawer
+    if (window.innerWidth < 640) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  // Start a fresh conversation
+  const handleNewChat = () => {
+    setActiveConversationId(null);
+    setChatMessages([]);
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+    if (window.innerWidth < 640) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  // Send a message (continue active conversation or start a new one)
   const handleSendMessage = async (customMessage) => {
     const messageContent = (customMessage || input).trim();
     if (!messageContent || loading) return;
@@ -105,9 +174,22 @@ const Chat = () => {
     setLoading(true);
 
     try {
-      const data = await sendChatRequest(messageContent);
+      const isNewChat = !activeConversationId;
+      const data = await sendChatRequest(messageContent, activeConversationId);
+
       if (data?.chats) {
         setChatMessages(data.chats);
+      }
+
+      // If this was a new conversation, set the newly generated ID
+      if (isNewChat && data?.conversationId) {
+        setActiveConversationId(data.conversationId);
+      }
+
+      // Refresh conversations list in background to update titles and ordering
+      const convListRes = await getConversations();
+      if (convListRes?.conversations) {
+        setConversations(convListRes.conversations);
       }
     } catch (error) {
       toast.error(error.message || "Failed to send message");
@@ -123,17 +205,77 @@ const Chat = () => {
     }
   };
 
-  const handleClearChat = async () => {
-    if (chatMessages.length === 0) return;
-    if (!window.confirm("Clear all messages in this conversation?")) return;
+  // Start inline renaming
+  const handleStartRename = (conv, e) => {
+    e.stopPropagation();
+    setEditingConvId(conv._id);
+    setEditingTitle(conv.title || "New Chat");
+  };
+
+  // Save renamed conversation
+  const handleSaveRename = async (convId, e) => {
+    e?.stopPropagation();
+    const trimmed = editingTitle.trim();
+    if (!trimmed) {
+      toast.error("Conversation title cannot be empty");
+      return;
+    }
 
     try {
-      toast.loading("Clearing chat...", { id: "clear" });
-      await deleteUserChats();
-      setChatMessages([]);
-      toast.success("Conversation cleared", { id: "clear" });
+      await renameConversation(convId, trimmed);
+      setConversations((prev) =>
+        prev.map((c) => (c._id === convId ? { ...c, title: trimmed } : c))
+      );
+      setEditingConvId(null);
+      toast.success("Conversation renamed");
     } catch (error) {
-      toast.error("Failed to clear chat", { id: "clear" });
+      toast.error(error.message || "Failed to rename conversation");
+    }
+  };
+
+  // Cancel inline renaming
+  const handleCancelRename = (e) => {
+    e?.stopPropagation();
+    setEditingConvId(null);
+    setEditingTitle("");
+  };
+
+  // Delete a specific conversation
+  const handleDeleteConversation = async (convId, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this conversation?")) return;
+
+    try {
+      toast.loading("Deleting conversation...", { id: "delete-conv" });
+      await deleteConversation(convId);
+      setConversations((prev) => prev.filter((c) => c._id !== convId));
+
+      // If the currently active conversation was deleted, reset to New Chat
+      if (activeConversationId === convId) {
+        setActiveConversationId(null);
+        setChatMessages([]);
+      }
+
+      toast.success("Conversation deleted", { id: "delete-conv" });
+    } catch (error) {
+      toast.error(error.message || "Failed to delete conversation", { id: "delete-conv" });
+    }
+  };
+
+  // Clear all conversations
+  const handleClearAllHistory = async () => {
+    if (conversations.length === 0 && chatMessages.length === 0) return;
+    if (!window.confirm("Clear all conversations and chat history? This cannot be undone.")) return;
+
+    try {
+      toast.loading("Clearing all history...", { id: "clear-all" });
+      await deleteUserChats();
+      setConversations([]);
+      setActiveConversationId(null);
+      setChatMessages([]);
+      toast.success("All chat history cleared", { id: "clear-all" });
+    } catch (error) {
+      toast.error("Failed to clear chat history", { id: "clear-all" });
     }
   };
 
@@ -150,12 +292,16 @@ const Chat = () => {
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin"></div>
           <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            Loading your conversation...
+            Loading conversations...
           </span>
         </div>
       </div>
     );
   }
+
+  const currentTitle =
+    conversations.find((c) => c._id === activeConversationId)?.title ||
+    (chatMessages.length > 0 ? "Conversation" : "New Chat");
 
   return (
     <div className="flex h-screen w-full bg-white dark:bg-[#212121] overflow-hidden text-zinc-900 dark:text-zinc-100 font-sans transition-colors duration-200">
@@ -163,24 +309,23 @@ const Chat = () => {
       <aside
         className={`fixed inset-y-0 left-0 z-40 sm:static sm:z-0 flex flex-col bg-[#f9f9f9] dark:bg-[#171717] border-r border-zinc-200/80 dark:border-zinc-800/80 transition-all duration-300 ease-in-out ${
           isSidebarOpen
-            ? "w-64 sm:w-64 translate-x-0"
+            ? "w-72 sm:w-72 translate-x-0"
             : "-translate-x-full sm:w-0 sm:border-r-0 sm:overflow-hidden"
         }`}
       >
-        <div className="p-3 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 min-w-[256px]">
-          {/* New Chat Button */}
+        {/* Top Action Bar (New Chat + Sidebar Toggle) */}
+        <div className="p-3 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 min-w-[288px]">
           <button
-            onClick={handleClearChat}
-            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition shadow-sm text-zinc-800 dark:text-zinc-200"
+            onClick={handleNewChat}
+            className="flex-1 flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition shadow-sm text-zinc-800 dark:text-zinc-200"
           >
             <RiAddLine className="text-lg text-indigo-500" />
             <span>New chat</span>
           </button>
 
-          {/* Close Sidebar Toggle (Mobile / Desktop) */}
           <button
             onClick={() => setIsSidebarOpen(false)}
-            className="p-2 ml-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white rounded-lg hover:bg-zinc-200/60 dark:hover:bg-zinc-800"
+            className="p-2 ml-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white rounded-lg hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition"
             title="Close sidebar"
             aria-label="Close sidebar"
           >
@@ -188,38 +333,128 @@ const Chat = () => {
           </button>
         </div>
 
-        {/* Sidebar Content (Chat History / Recent) */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1 min-w-[256px]">
-          <div className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider px-2 py-1">
-            Current Session
-          </div>
-
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-200/70 dark:bg-zinc-800/90 text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer">
-            <div className="flex items-center gap-2 truncate">
-              <img src={botLogo} alt="Bot" className="w-4 h-4 object-contain shrink-0" />
-              <span className="truncate">
-                {chatMessages.length > 0
-                  ? chatMessages[0].content.slice(0, 22) + "..."
-                  : "New Conversation"}
+        {/* Conversation History List */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 min-w-[288px] custom-scrollbar">
+          <div className="flex items-center justify-between px-3 py-1.5 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+            <span>Conversations</span>
+            {conversations.length > 0 && (
+              <span className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full text-zinc-500 dark:text-zinc-400 font-mono">
+                {conversations.length}
               </span>
-            </div>
-            {chatMessages.length > 0 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClearChat();
-                }}
-                title="Clear conversation"
-                className="text-zinc-400 hover:text-red-500 p-1 rounded"
-              >
-                <RiDeleteBinLine className="w-3.5 h-3.5" />
-              </button>
             )}
           </div>
+
+          {conversations.length === 0 ? (
+            <div className="px-3 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
+              No previous conversations.<br />Start your first chat above!
+            </div>
+          ) : (
+            conversations.map((conv) => {
+              const isActive = conv._id === activeConversationId;
+              const isEditing = conv._id === editingConvId;
+
+              if (isEditing) {
+                return (
+                  <div
+                    key={conv._id}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5 p-1.5 rounded-xl bg-zinc-200/90 dark:bg-zinc-800 text-sm"
+                  >
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveRename(conv._id, e);
+                        if (e.key === "Escape") handleCancelRename(e);
+                      }}
+                      autoFocus
+                      maxLength={100}
+                      className="flex-1 bg-white dark:bg-zinc-900 px-2 py-1 text-xs rounded border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={(e) => handleSaveRename(conv._id, e)}
+                      title="Save"
+                      className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                    >
+                      <RiCheckLine className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={handleCancelRename}
+                      title="Cancel"
+                      className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                    >
+                      <RiCloseLine className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={conv._id}
+                  onClick={() => handleSelectConversation(conv._id)}
+                  className={`group flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition cursor-pointer ${
+                    isActive
+                      ? "bg-zinc-200/90 dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm"
+                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate min-w-0 flex-1">
+                    <RiMessage3Line
+                      className={`w-4 h-4 shrink-0 ${
+                        isActive
+                          ? "text-indigo-600 dark:text-indigo-400"
+                          : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
+                      }`}
+                    />
+                    <span className="truncate text-xs sm:text-sm" title={conv.title}>
+                      {conv.title || "New Chat"}
+                    </span>
+                  </div>
+
+                  {/* Actions: Rename & Delete (visible on hover / active) */}
+                  <div
+                    className={`flex items-center gap-1 shrink-0 ${
+                      isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    } transition-opacity duration-150`}
+                  >
+                    <button
+                      onClick={(e) => handleStartRename(conv, e)}
+                      title="Rename conversation"
+                      className="p-1 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-300/50 dark:hover:bg-zinc-700 transition"
+                    >
+                      <RiEdit2Line className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteConversation(conv._id, e)}
+                      title="Delete conversation"
+                      className="p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-zinc-300/50 dark:hover:bg-zinc-700 transition"
+                    >
+                      <RiDeleteBinLine className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
+        {/* Clear All History Button */}
+        {conversations.length > 0 && (
+          <div className="px-3 py-2 border-t border-zinc-200/60 dark:border-zinc-800/60 min-w-[288px]">
+            <button
+              onClick={handleClearAllHistory}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-red-500 dark:text-zinc-400 dark:hover:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
+            >
+              <RiDeleteBinLine className="w-3.5 h-3.5" />
+              <span>Clear all conversations</span>
+            </button>
+          </div>
+        )}
+
         {/* User Footer & Theme Toggle */}
-        <div className="p-3 border-t border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-100/50 dark:bg-zinc-900/50 min-w-[256px] space-y-2">
+        <div className="p-3 border-t border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-100/50 dark:bg-zinc-900/50 min-w-[288px] space-y-2">
           {/* Theme Toggle Pill */}
           <div className="flex items-center justify-between px-2 py-1.5 text-xs text-zinc-600 dark:text-zinc-400">
             <span className="font-medium">Appearance</span>
@@ -290,10 +525,14 @@ const Chat = () => {
               <RiSideBarLine className="w-5 h-5" />
             </button>
 
-            {/* Model Badge with Logo */}
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700/80">
-              <img src={botLogo} alt="Logo" className="w-4 h-4 object-contain" />
-              <span>Multi-Model AI</span>
+            {/* Conversation Title & Model Badge */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700/80">
+                <img src={botLogo} alt="Logo" className="w-4 h-4 object-contain" />
+                <span className="truncate max-w-[120px] sm:max-w-[180px]" title={currentTitle}>
+                  {currentTitle}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -333,7 +572,7 @@ const Chat = () => {
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
           {chatMessages.length === 0 ? (
-            /* Empty State */
+            /* Empty State / Welcome Hero */
             <div className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto py-12">
               <img src={botLogo} alt="Chatbot" className="w-16 h-16 object-contain mb-4 drop-shadow-md" />
 

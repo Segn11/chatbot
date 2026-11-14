@@ -54,6 +54,13 @@
 
 ## ✨ Key Features
 
+- **🗂️ ChatGPT-Style Persistent Chat History**:
+  - **Multi-Session Isolation**: Automatically saves every conversation and its individual messages in MongoDB.
+  - **Dynamic Sidebar**: Displays previous conversations ordered by latest activity with real-time updates.
+  - **Open & Continue**: Instantly switch between conversations, retaining full conversational context and AI history.
+  - **Rename Conversations**: Edit conversation titles inline with keyboard shortcuts (`Enter` to save, `Escape` to cancel).
+  - **Delete Sessions**: Selectively delete individual conversations or clear entire chat history.
+  - **Strict Multi-Tenant Security**: Database-level query scoping guarantees each user can access only their own conversations.
 - **🌓 Dynamic Theme Toggle**: Instant, seamless Dark / Light mode switching with custom scrollbars and persistence across sessions.
 - **💬 Next-Gen Chat UI**:
   - **Collapsible Sidebar**: One-click sidebar collapse/expand toggle for a distraction-free experience.
@@ -205,19 +212,24 @@ docker compose --profile with-mongo up --build
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :---: |
 | `POST` | `/api/v1/user/signup` | Register new user account | No |
-| `POST` | `/api/v1/user/login` | Authenticate user & issue signed cookie | No |
-| `GET` | `/api/v1/user/auth-status` | Verify session cookie & return profile | **Yes** |
-| `GET` | `/api/v1/user/logout` | Clear cookie & invalidate session | **Yes** |
-| `POST` | `/api/v1/chat/new` | Send prompt & receive AI response | **Yes** |
-| `GET` | `/api/v1/chat/all-chats` | Retrieve conversation history | **Yes** |
-| `DELETE` | `/api/v1/chat/delete` | Clear conversation history | **Yes** |
+| `POST` | `/api/v1/user/login` | Authenticate user & issue signed cookie / Bearer token | No |
+| `GET` | `/api/v1/user/auth-status` | Verify session and return user profile | **Yes** |
+| `GET` | `/api/v1/user/logout` | Clear cookie and terminate session | **Yes** |
+| `GET` | `/api/v1/chat/conversations` | List all user conversations (ordered newest first) | **Yes** |
+| `POST` | `/api/v1/chat/conversations` | Create a new conversation session | **Yes** |
+| `GET` | `/api/v1/chat/conversation/:id` | Retrieve conversation details and full message history | **Yes** |
+| `PUT` | `/api/v1/chat/conversation/:id` | Rename a conversation title | **Yes** |
+| `DELETE` | `/api/v1/chat/conversation/:id` | Delete a specific conversation session | **Yes** |
+| `POST` | `/api/v1/chat/new` | Send prompt to AI & append to conversation | **Yes** |
+| `GET` | `/api/v1/chat/all-chats` | Retrieve conversation messages (active or specified) | **Yes** |
+| `DELETE` | `/api/v1/chat/delete` | Clear conversation or all user history | **Yes** |
 | `GET` | `/health` | Service health status check | No |
 
 ---
 
 ## 🧪 Comprehensive QA & Production Readiness
 
-The system includes automated QA test suites covering security, AI failover, concurrency, database persistence, responsive UI, and container integrity:
+The system includes automated QA test suites covering security, AI failover, concurrency, database persistence, persistent conversation history, responsive UI, and container integrity:
 
 ```bash
 # Run Phase 1 Functional & Regression Suite (31 Tests)
@@ -225,11 +237,15 @@ cd backend && node qa-test-suite.js
 
 # Run Phase 2 Production Hardening & Concurrency Suite (13 Tests)
 cd backend && node phase2-qa-suite.js
+
+# Run ChatGPT-Style Persistent History Test Suite (11 Tests)
+cd backend && node test-conversation-history.js
 ```
 
-### Audit Results: 100% Pass Rate (44/44 Tests Passed)
+### Audit Results: 100% Pass Rate (55/55 Tests Passed)
+- **ChatGPT-Style Persistent History**: Auto-created conversation sessions on first turn, seamlessly continued conversations by ID, listed sessions ordered by `updatedAt`, renamed titles inline, verified strict multi-tenant isolation (preventing cross-user reads/writes/deletions), and supported selective session deletion.
 - **Security & Cryptography**: Rejected expired JWT tokens (HTTP 401), prevented NoSQL query injection attacks (HTTP 422), rejected oversized prompts (>10,000 chars), and mitigated brute-force attacks via `express-rate-limit` (HTTP 429).
-- **Concurrency & Stress**: Handled 25 simultaneous user signup + AI chat transactions in parallel (5.2s total completion, p50: 4.0s, p95: 4.5s) with 0 errors.
+- **Concurrency & Stress**: Handled 25 simultaneous user signup + AI chat transactions in parallel with 0 errors.
 - **Data Persistence**: Verified multi-session durable persistence and rehydration against live MongoDB Atlas.
 - **Cross-Device UI**: Validated responsive viewport adaptability across Desktop (1440x900), Tablet (768x1024), and Mobile (375x812).
 
