@@ -28,7 +28,7 @@
 ## 📸 UI Showcase
 
 ### 🌟 Modern Chat Interface (Dark Mode)
-![Chatbot Dark Mode Interface](./screenshots/chat-dark.png)
+![Chatbot Dark Mode Interface]()
 
 <br/>
 
