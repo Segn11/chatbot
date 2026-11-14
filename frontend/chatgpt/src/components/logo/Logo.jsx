@@ -1,15 +1,22 @@
-import { Link } from "react-router-dom"
-import logo from "../../assets/5940332747446928966.jpg"
+import React from "react";
+import { Link } from "react-router-dom";
+import logo from "../../assets/chatbot-logo.svg";
 
 const Logo = () => {
-    return (
-        <div>
-            <Link to={"/"} className="flex gap-x-2 items-center ">
-                <img src={logo} className="w-10" />
-                <span>Chatgpt</span>
-            </Link>
-        </div>
-    )
-}
+  return (
+    <Link to="/" className="flex items-center gap-2.5 group">
+      <div className="relative">
+        <img
+          src={logo}
+          alt="Chatbot Logo"
+          className="w-8 h-8 rounded-xl object-contain group-hover:scale-105 transition duration-200"
+        />
+      </div>
+      <div className="flex items-center gap-1.5 font-bold text-lg tracking-tight text-zinc-900 dark:text-white">
+        <span>Chatbot</span>
+      </div>
+    </Link>
+  );
+};
 
-export default Logo
+export default Logo;

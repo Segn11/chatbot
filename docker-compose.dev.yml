@@ -1,0 +1,46 @@
+services:
+  # ==========================================
+  # Backend Development (with Nodemon Reloading)
+  # ==========================================
+  backend:
+    image: node:20-alpine
+    container_name: chatbot_backend_dev
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+    command: sh -c "npm install && npm run dev"
+    networks:
+      - chatbot_dev_network
+
+  # ==========================================
+  # Frontend Development (Vite HMR)
+  # ==========================================
+  frontend:
+    image: node:20-alpine
+    container_name: chatbot_frontend_dev
+    working_dir: /app
+    volumes:
+      - ./frontend/chatgpt:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5000/api/v1
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - backend
+    networks:
+      - chatbot_dev_network
+
+networks:
+  chatbot_dev_network:
+    driver: bridge
+

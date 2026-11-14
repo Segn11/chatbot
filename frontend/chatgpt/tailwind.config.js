@@ -1,20 +1,35 @@
 /** @type {import('tailwindcss').Config} */
-
-module.exports = {
+export default {
+  darkMode: "class",
   content: [
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-
-    // Or if using `src` directory:
-    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
-      fontFamily:{
-        parkinsas:[ 'Parkinsans', 'sanserif']
-      }
+      fontFamily: {
+        parkinsas: ["Parkinsans", "sans-serif"],
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+      },
+      colors: {
+        sidebar: {
+          light: "#f9f9f9",
+          dark: "#171717",
+        },
+        chatbg: {
+          light: "#ffffff",
+          dark: "#212121",
+        },
+      },
     },
   },
   plugins: [],
-}
+};

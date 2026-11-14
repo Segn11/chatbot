@@ -1,4 +1,41 @@
-@import url('https://fonts.googleapis.com/css2?family=Parkinsans:wght@300..800&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Parkinsans:wght@300..800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-zinc-900 dark:bg-[#212121] dark:text-zinc-100 antialiased transition-colors duration-200 font-sans;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-zinc-300 dark:bg-zinc-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-400 dark:bg-zinc-600;
+}
+
+/* Code block styles */
+pre {
+  @apply rounded-xl bg-zinc-950 text-zinc-100 p-4 overflow-x-auto text-xs my-2 font-mono border border-zinc-800;
+}
+
+code {
+  @apply font-mono text-xs;
+}
+
+:not(pre) > code {
+  @apply px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-pink-600 dark:text-pink-400 font-mono text-xs;
+}

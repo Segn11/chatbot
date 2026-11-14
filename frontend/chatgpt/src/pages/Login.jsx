@@ -1,74 +1,120 @@
-import React, { useState } from 'react';
-import { toast } from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import { toast } from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
+import { Link, useNavigate } from "react-router-dom";
+import { IoEyeOutline, IoEyeOffOutline } from "react-icons/io5";
+import { RiSparklingFill } from "react-icons/ri";
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const {login} = useAuth();
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    console.log('Logging in with:', email, password);
-  
+    if (!email || !password) {
+      toast.error("Please fill in both email and password");
+      return;
+    }
+
     try {
-      toast.loading("Signing In", { id: "login" })
-      await login(email,password)
-      toast.success("Signed In Successfully", { id: "login" })
+      setLoading(true);
+      toast.loading("Signing in...", { id: "login" });
+      await login(email, password);
+      toast.success("Signed in successfully!", { id: "login" });
+      navigate("/chat");
     } catch (error) {
-      // console.log(error)
-      toast.error("Signing In Failed", { id: "login" })
+      toast.error(error.message || "Signing in failed", { id: "login" });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen px-4 no-scrollbar">
-      <div className="w-full max-w-sm bg-white p-8 rounded-lg shadow-lg">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-6">Sign in to Chatgpt</h2>
-        <form onSubmit={handleLogin}>
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
+    <div className="flex justify-center items-center py-12 md:py-20 px-4">
+      <div className="w-full max-w-md bg-white dark:bg-[#181818] p-8 sm:p-10 rounded-3xl shadow-xl shadow-zinc-900/5 dark:shadow-none border border-zinc-200/80 dark:border-zinc-800 transition-colors">
+        <div className="flex justify-center mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 flex items-center justify-center text-2xl">
+            <RiSparklingFill />
+          </div>
+        </div>
+
+        <h2 className="text-2xl sm:text-3xl font-bold text-center text-zinc-900 dark:text-white tracking-tight mb-2">
+          Welcome back
+        </h2>
+        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400 mb-8">
+          Sign in to access your chat history and continue conversations.
+        </p>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 mb-1.5"
+            >
+              Email address
+            </label>
             <input
               type="email"
               id="email"
-              name="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full p-2 mt-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="you@example.com"
+              className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 transition"
             />
           </div>
 
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full p-2 mt-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 mb-1.5"
+            >
+              Password
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 transition pr-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1"
+                aria-label="Toggle password visibility"
+              >
+                {showPassword ? <IoEyeOffOutline className="w-5 h-5" /> : <IoEyeOutline className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
-
-          {/* Display error message if any */}
-          {error && <div className="text-red-600 text-sm mb-4">{error}</div>}
 
           <button
             type="submit"
-            className="w-full p-3 bg-black text-white rounded-md hover:bg-gray-800 transition duration-300 ease-in-out"
+            disabled={loading}
+            className="w-full py-3.5 mt-2 rounded-xl font-medium text-sm bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 active:scale-[0.99] transition duration-200 disabled:opacity-50 shadow-md shadow-zinc-900/10"
           >
-            Sign in
+            {loading ? "Signing in..." : "Continue"}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{' '}
-            <a href="/signup" className="text-blue-500 hover:underline">Sign up</a>
+        <div className="mt-8 pt-6 border-t border-zinc-200/80 dark:border-zinc-800 text-center">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Don't have an account?{" "}
+            <Link
+              to="/signup"
+              className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
+            >
+              Sign up
+            </Link>
           </p>
         </div>
       </div>
